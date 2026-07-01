@@ -20,6 +20,16 @@ etc.) never trigger a split.
 Validated: 2048² 2×2 → 4 tiles · 2728×1536 uneven 1×3 → 928/976/824 tiles ·
 3344×1880 irregular 10-panel collage (incl. a column that's itself split in two).
 
+## Examples
+
+**Simple 2×2 grid → 4 clean panels** (bottom-right shows the `preview` output with detected boxes in red):
+
+![Simple 2×2 grid split into 4 panels](images/example1_simplegrid.png)
+
+**Irregular collage → 10 panels** — note the bottom-middle cell is itself split into two, while the pool and chalkboards stay whole:
+
+![Irregular collage split into 10 panels](images/example2_complexgrid.png)
+
 ## Node: `Auto Grid / Carousel Split`
 
 **Inputs**
@@ -48,7 +58,7 @@ git clone https://github.com/workordie/ComfyUI-GridSplit.git
 ```
 No dependencies beyond torch/numpy (already in ComfyUI).
 
-## Example
+## Example workflow
 Drag [`example_workflows/autogrid_example.json`](example_workflows/autogrid_example.json)
 onto the ComfyUI canvas — it generates an image and splits it, wiring `panels`
 into SaveImage and `preview` into PreviewImage.

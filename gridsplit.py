@@ -116,14 +116,20 @@ def _trim_frame(gray, cfg):
 def _seams_1d(profile, length, cfg):
     z = _robust_z(profile)
     dl = profile.tolist(); zl = z.tolist()
-    peaks = []
+    # 1) candidate local-max boundaries above the base floor
+    cand = [i for i in range(1, len(dl) - 1)
+            if zl[i] >= cfg["z_thresh"] and dl[i] >= max(dl[max(0, i - 3):i + 4]) - 1e-9]
+    if not cand:
+        return []
+    # 2) relative suppression: drop edges far weaker than the dominant seam.
+    #    True grid seams cluster near the top; content edges sit well below.
+    cutoff = cfg["rel_frac"] * max(zl[i] for i in cand)
     gap = max(4, int(cfg["min_gap_frac"] * length))
-    for i in range(1, len(dl) - 1):
-        if zl[i] < cfg["z_thresh"]:
+    peaks = []
+    for i in cand:
+        if zl[i] < cutoff:
             continue
-        if dl[i] < max(dl[max(0, i - 3):i + 4]) - 1e-9:
-            continue
-        if peaks and (i - peaks[-1]) < gap:
+        if peaks and (i - peaks[-1]) < gap:                 # merge near-duplicates
             if dl[i] > dl[peaks[-1]]:
                 peaks[-1] = i
             continue
@@ -150,16 +156,17 @@ def _seamless_split(gray, cfg):
 
 # ----------------------------------------------------------------------------- public API
 def find_panels(img_hwc, sensitivity=1.0, min_panel=64, min_gutter=3,
-                max_gutter_frac=0.06, gutter_std_abs=0.035, min_gap_frac=0.05,
-                max_depth=12):
+                max_gutter_frac=0.06, gutter_std_abs=0.01, min_gap_frac=0.05,
+                rel_frac=0.3, max_depth=12):
     gray = img_hwc.float().mean(-1)
     cfg = {
         "z_thresh": max(3.0, 6.0 - sensitivity),
         "min_panel": int(min_panel),
         "min_gutter": int(min_gutter),
         "max_gutter_frac": float(max_gutter_frac),
-        "gutter_std_abs": float(gutter_std_abs),
+        "gutter_std_abs": float(gutter_std_abs),   # only near-SOLID bands count as gutters
         "min_gap_frac": float(min_gap_frac),
+        "rel_frac": float(rel_frac),               # seamless: keep seams >= rel_frac * strongest
         "max_depth": int(max_depth),
     }
     if _has_gutters(gray, cfg):

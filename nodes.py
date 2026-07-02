@@ -9,7 +9,7 @@ ComfyUI-GridSplit nodes.
 No model, CPU, any resolution.
 """
 import torch
-import torch.nn.functional as F
+import comfy.utils
 from .gridsplit import find_panels, slice_boxes, draw_preview
 
 
@@ -60,6 +60,9 @@ class GridStitch:
                 "cols": ("INT", {"default": 3, "min": 1, "max": 32}),
                 "megapixels": ("FLOAT", {"default": 4.0, "min": 0.1, "max": 100.0, "step": 0.1,
                                          "tooltip": "Target TOTAL size of the stitched grid, in megapixels."}),
+                "scale_method": (["nearest-exact", "bilinear", "area", "bicubic", "lanczos"],
+                                 {"default": "bicubic",
+                                  "tooltip": "Resampling filter (same set as ComfyUI's Upscale Image). bicubic/lanczos = sharp; area = clean downscale; nearest-exact = blocky."}),
             }
         }
 
@@ -68,18 +71,17 @@ class GridStitch:
     FUNCTION = "stitch"
     CATEGORY = "image/grid"
 
-    def stitch(self, image, rows, cols, megapixels):
+    def stitch(self, image, rows, cols, megapixels, scale_method):
         B, H, W, C = image.shape
         aspect = W / H
         target_px = max(1.0, megapixels * 1_000_000.0)
         # aspect-preserving cell whose rows*cols copies tile to ~target_px
         h_c = max(1, int(round((target_px / (rows * cols * aspect)) ** 0.5)))
         w_c = max(1, int(round(aspect * h_c)))
-        # resize every input image to the cell size (antialiased for clean down-scaling)
-        chw = image.permute(0, 3, 1, 2)
-        resized = F.interpolate(chw, size=(h_c, w_c), mode="bicubic",
-                                antialias=True, align_corners=False).clamp(0.0, 1.0)
-        resized = resized.permute(0, 2, 3, 1)
+        # resize each cell with ComfyUI's own upscaler (identical to the Upscale Image node)
+        samples = image.movedim(-1, 1)  # [B,H,W,C] -> [B,C,H,W]
+        resized = comfy.utils.common_upscale(samples, w_c, h_c, scale_method, "disabled")
+        resized = resized.movedim(1, -1).clamp(0.0, 1.0)  # -> [B,h_c,w_c,C]
         out = torch.empty(1, rows * h_c, cols * w_c, C, dtype=image.dtype, device=image.device)
         for r in range(rows):
             for c in range(cols):

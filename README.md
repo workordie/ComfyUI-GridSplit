@@ -71,6 +71,7 @@ aspect ratio (no distortion) and tile seamlessly.
 | `image` | the image to tile (a batch of N fills the cells cyclically; a single image just repeats) |
 | `rows`, `cols` | grid dimensions, e.g. 3×3 or 3×4 |
 | `megapixels` | target **total** size of the stitched grid |
+| `scale_method` | resampling filter — same set as ComfyUI's Upscale Image (`nearest-exact` / `bilinear` / `area` / `bicubic` / `lanczos`), default `bicubic` |
 
 **Outputs**
 | name | what |

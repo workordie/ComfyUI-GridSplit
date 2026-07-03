@@ -90,11 +90,99 @@ class GridStitch:
         return (out, cols * w_c, rows * h_c)
 
 
+def _to_chw(img):
+    """[B,H,W,C] or [H,W,C] -> [C,H,W]."""
+    if img.dim() == 4:
+        img = img[0]
+    return img.movedim(-1, 0)
+
+
+def _match_channels(pieces):
+    c = max(p.shape[0] for p in pieces)
+    out = []
+    for p in pieces:
+        if p.shape[0] < c:                       # pad missing channels with 1.0 (like ImageStitch)
+            pad = torch.ones(c - p.shape[0], p.shape[1], p.shape[2], dtype=p.dtype, device=p.device)
+            p = torch.cat([p, pad], dim=0)
+        out.append(p)
+    return out
+
+
+def stitch_imagestitch_style(cells, rows, cols, scale_method="lanczos", empty_color=0.0):
+    """Replicates ComfyUI ImageStitch (match_image_size=True) over an R x C grid:
+    per row, resize each image to the row's first-image HEIGHT (aspect-preserved);
+    then resize each row strip to the first row's WIDTH. No padding -> clean rectangle.
+    cells: row-major list (len rows*cols) of [C,H,W] tensors or None."""
+    def resize(chw, h, w):
+        return comfy.utils.common_upscale(chw.unsqueeze(0), w, h, scale_method, "disabled")[0]
+
+    row_strips = []
+    for r in range(rows):
+        rc = cells[r * cols:(r + 1) * cols]
+        anchor_h = next((c.shape[1] for c in rc if c is not None), 512)
+        pieces = []
+        for c in rc:
+            if c is None:                        # empty cell -> square placeholder at row height
+                pieces.append(torch.full((3, anchor_h, anchor_h), float(empty_color)))
+            else:
+                h, w = c.shape[1], c.shape[2]
+                pieces.append(resize(c, anchor_h, max(1, round(w * anchor_h / h))))
+        row_strips.append(torch.cat(_match_channels(pieces), dim=2))   # concat along width
+
+    anchor_w = row_strips[0].shape[2]
+    finals = []
+    for rs in row_strips:
+        h, w = rs.shape[1], rs.shape[2]
+        finals.append(resize(rs, max(1, round(h * anchor_w / w)), anchor_w))
+    return torch.cat(_match_channels(finals), dim=1)                   # concat along height -> [C,H,W]
+
+
+class GridStitchAdvanced:
+    """Stitch multiple (different-size) images into an R x C grid, ImageStitch-style,
+    scaled to a target megapixels. image_i -> cell i (row-major); empty cells -> black."""
+    MAX_IMAGES = 16
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "rows": ("INT", {"default": 2, "min": 1, "max": 8}),
+                "cols": ("INT", {"default": 2, "min": 1, "max": 8}),
+                "megapixels": ("FLOAT", {"default": 4.0, "min": 0.1, "max": 100.0, "step": 0.1,
+                                         "tooltip": "Target TOTAL size of the stitched grid."}),
+                "scale_method": (["lanczos", "bicubic", "area", "bilinear", "nearest-exact"],
+                                 {"default": "lanczos"}),
+            },
+            "optional": {f"image_{i}": ("IMAGE",) for i in range(1, cls.MAX_IMAGES + 1)},
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT")
+    RETURN_NAMES = ("grid", "width", "height")
+    FUNCTION = "stitch"
+    CATEGORY = "image/grid"
+
+    def stitch(self, rows, cols, megapixels, scale_method, **kwargs):
+        n = rows * cols
+        cells = []
+        for i in range(1, n + 1):
+            img = kwargs.get(f"image_{i}")
+            cells.append(_to_chw(img) if img is not None else None)
+        grid = stitch_imagestitch_style(cells, rows, cols, scale_method)
+        gh, gw = grid.shape[1], grid.shape[2]
+        scale = (max(1.0, megapixels * 1_000_000.0) / (gh * gw)) ** 0.5
+        out_h, out_w = max(1, round(gh * scale)), max(1, round(gw * scale))
+        grid = comfy.utils.common_upscale(grid.unsqueeze(0), out_w, out_h, scale_method, "disabled")[0]
+        out = grid.movedim(0, -1).unsqueeze(0).clamp(0.0, 1.0)
+        return (out, out_w, out_h)
+
+
 NODE_CLASS_MAPPINGS = {
     "AutoGridSplit": AutoGridSplit,
     "GridStitch": GridStitch,
+    "GridStitchAdvanced": GridStitchAdvanced,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "AutoGridSplit": "Auto Grid / Carousel Split",
     "GridStitch": "Grid Stitch (repeat → grid)",
+    "GridStitchAdvanced": "Grid Stitch Advanced (multi-image)",
 }

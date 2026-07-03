@@ -81,6 +81,29 @@ aspect ratio (no distortion) and tile seamlessly.
 
 Example: a 1448² image at **3×4 @ 4 MP** → a 2308×1731 grid, each cell ~577×577, no distortion.
 
+---
+
+## Grid Stitch Advanced
+
+Stitch **multiple different images** (any sizes) into an R×C grid — exactly the way
+ComfyUI's built-in **Stitch Images** does it (`match_image_size`): each image is
+resized to match its neighbour's shared edge (aspect-preserved, lanczos), **no
+padding**, so the result is a clean filled rectangle. Then scaled to a target megapixels.
+
+**Inputs**
+| name | what |
+|------|------|
+| `rows`, `cols` | grid dimensions (up to 8×8) |
+| `megapixels` | target total size of the stitched grid |
+| `scale_method` | resample filter (default `lanczos`) |
+| `image_1 … image_16` | one image per cell, row-major (`image_1` = top-left). Empty cells → black |
+
+**Outputs:** `grid`, `width`, `height`.
+
+Use it to assemble already-generated scenes into a grid for Krea2 img2img, then
+`Auto Grid / Carousel Split` to break the result back apart. (Phase 1: up to 16 cells
+via numbered inputs; an interactive drag-arrange widget is planned.)
+
 ## Install
 ```bash
 cd ComfyUI/custom_nodes

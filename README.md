@@ -1,9 +1,33 @@
-# ComfyUI-GridSplit
+# ComfyUI-AutoGrid
 
-Two complementary grid tools for ComfyUI — **no model, no weights, CPU, any resolution:**
+A small pack of **grid** tools for ComfyUI — **no model, no weights, CPU, any resolution.**
+Split a stitched image back into its panels, or stitch images into a clean grid using an
+interactive, in-node layout picker.
 
 - **Auto Grid / Carousel Split** — detect how a stitched image is divided and split it into its panels.
-- **Grid Stitch** — the inverse: repeat one image into an R×C grid, scaled to a target megapixels.
+- **Auto Grid / Stitch (one image)** — tile one image into an R×C grid.
+- **Auto Grid / Stitch Advanced (multi-image)** — stitch many images into a grid, with an interactive picker and **auto / manual** modes.
+
+All three live under the **image/grid** category.
+
+---
+
+## The interactive grid picker
+
+The two **Stitch** nodes draw a **4×4 grid picker right inside the node**. Hover to preview a
+block (it fills from the **bottom-left**); click to lock a rows×cols layout. Each selected
+cell shows the **image slot number** it maps to — top-left origin, row-major — so you see
+exactly where each input lands:
+
+- `1×2` → **1** top, **2** bottom
+- `2×1` → **1** left, **2** right
+- `2×2` → **1 2** top row, **3 4** bottom row
+
+On **Stitch Advanced**, choosing a layout also **adds/removes the `image_i` input ports** to
+match (2×1 → 2 inputs, 3×3 → 9). Max **4×4 = 16** cells.
+
+> The picker is a small frontend widget (served from `web/`). After installing or updating,
+> restart ComfyUI **and hard-refresh** the browser so it loads.
 
 ---
 
@@ -27,7 +51,7 @@ etc.) never trigger a split.
 Validated: 2048² 2×2 → 4 tiles · 2728×1536 uneven 1×3 → 928/976/824 tiles ·
 3344×1880 irregular 10-panel collage (incl. a column that's itself split in two).
 
-## Examples
+### Examples
 
 **Simple 2×2 grid → 4 clean panels** (bottom-right shows the `preview` output with detected boxes in red):
 
@@ -59,60 +83,63 @@ A non-grid image passes through unchanged as a single panel.
 
 ---
 
-## Grid Stitch
+## Auto Grid / Stitch (one image)
 
-The inverse of the splitter: take one image you like and **repeat it into an R×C grid**,
-scaled so the whole thing hits a target megapixel count. Cells preserve the image's
-aspect ratio (no distortion) and tile seamlessly.
+Tile **one image** into an R×C grid, scaled to a target megapixels. It runs the exact same
+stitch engine as the Advanced node — the single image just fills every cell — so it's the
+quick path for single-image grids. Layout is set with the interactive picker.
 
 **Inputs**
 | name | what |
 |------|------|
-| `image` | the image to tile (a batch of N fills the cells cyclically; a single image just repeats) |
-| `rows`, `cols` | grid dimensions, e.g. 3×3 or 3×4 |
+| `image` | the image to tile into every cell |
+| `rows`, `cols` | grid dimensions (via the picker), up to 4×4 |
 | `megapixels` | target **total** size of the stitched grid |
-| `scale_method` | resampling filter — same set as ComfyUI's Upscale Image (`nearest-exact` / `bilinear` / `area` / `bicubic` / `lanczos`), default `bicubic` |
-
-**Outputs**
-| name | what |
-|------|------|
-| `grid` | the stitched grid image |
-| `width`, `height` | final output dimensions |
-
-Example: a 1448² image at **3×4 @ 4 MP** → a 2308×1731 grid, each cell ~577×577, no distortion.
-
----
-
-## Grid Stitch Advanced
-
-Stitch **multiple different images** (any sizes) into an R×C grid — exactly the way
-ComfyUI's built-in **Stitch Images** does it (`match_image_size`): each image is
-resized to match its neighbour's shared edge (aspect-preserved, lanczos), **no
-padding**, so the result is a clean filled rectangle. Then scaled to a target megapixels.
-
-**Inputs**
-| name | what |
-|------|------|
-| `rows`, `cols` | grid dimensions (up to 8×8) |
-| `megapixels` | target total size of the stitched grid |
 | `scale_method` | resample filter (default `lanczos`) |
-| `image_1 … image_16` | one image per cell, row-major (`image_1` = top-left). Empty cells → black |
 
 **Outputs:** `grid`, `width`, `height`.
 
-Use it to assemble already-generated scenes into a grid for Krea2 img2img, then
-`Auto Grid / Carousel Split` to break the result back apart. (Phase 1: up to 16 cells
-via numbered inputs; an interactive drag-arrange widget is planned.)
+---
+
+## Auto Grid / Stitch Advanced (multi-image)
+
+Stitch **multiple images** into an R×C grid, with the interactive picker managing the input
+ports. Two modes:
+
+**`auto`** — preserve every image, **no cropping**. Exactly like ComfyUI's built-in **Stitch
+Images** (`match_image_size`): each image is resized to share its neighbour's edge
+(aspect-preserved, lanczos), no padding — a clean filled rectangle even when the inputs are
+different sizes and ratios.
+
+**`manual`** — pick one target **ratio** and every image is **center-cropped** to it first,
+then tiled into a uniform grid. Use this when you want all cells identical (e.g. a tidy 3:4
+or 1:1 grid). Cropping is always a **center crop** (trim the long side, no distortion).
+Ratios: `1:1, 3:4, 4:3, 2:3, 3:2, 4:5, 9:16, 16:9`. *(The `ratio` dropdown only appears in manual mode.)*
+
+**Inputs**
+| name | what |
+|------|------|
+| `rows`, `cols` | grid dimensions via the picker (up to 4×4) |
+| `mode` | `auto` (preserve, no crop) or `manual` (center-crop all to one ratio) |
+| `ratio` | manual only — the aspect every image is cropped to |
+| `megapixels` | target **total** size of the grid |
+| `scale_method` | resample filter (default `lanczos`) |
+| `image_1 … image_16` | one image per cell, row-major (`image_1` = top-left). Ports appear/disappear with the picker. Empty cells → black |
+
+**Outputs:** `grid`, `width`, `height`.
+
+A common loop: assemble scenes with **Stitch Advanced** → run through Krea2 img2img →
+break the result back apart with **Carousel Split**.
+
+---
 
 ## Install
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/workordie/ComfyUI-GridSplit.git
-# restart ComfyUI
+git clone https://github.com/workordie/ComfyUI-AutoGrid.git
+# restart ComfyUI, then hard-refresh the browser (loads the picker widget)
 ```
 No dependencies beyond torch/numpy (already in ComfyUI).
 
-## Example workflow
-Drag [`example_workflows/autogrid_example.json`](example_workflows/autogrid_example.json)
-onto the ComfyUI canvas — it generates an image and splits it, wiring `panels`
-into SaveImage and `preview` into PreviewImage.
+## Example workflows
+Updated example workflows are on the way.

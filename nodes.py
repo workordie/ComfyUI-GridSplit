@@ -275,10 +275,13 @@ class GridStitchAdvanced:
                                          "tooltip": "Target TOTAL size of the stitched grid."}),
                 "scale_method": (["lanczos", "bicubic", "area", "bilinear", "nearest-exact"],
                                  {"default": "lanczos"}),
+            },
+            "optional": {
+                # optional (default "") so graphs that omit it still validate — matches the no-op contract.
                 "mask_cells": ("STRING", {"default": "",
                                "tooltip": "Cells to DENOISE for the MASK output (row-major, 1-indexed, e.g. '2,4-6'). Others are preserved. Empty = denoise all (mask is a no-op). Set via the picker's mask toggle, or by hand / from an app."}),
+                **{f"image_{i}": ("IMAGE",) for i in range(1, cls.MAX_IMAGES + 1)},
             },
-            "optional": {f"image_{i}": ("IMAGE",) for i in range(1, cls.MAX_IMAGES + 1)},
         }
 
     RETURN_TYPES = ("IMAGE", "INT", "INT", "MASK")
